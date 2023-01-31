@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+program=$(basename $0)
+
+json() {
+    echo $1 | jq -r ".$2"
+}
+
+help_cmd() {
+    printf "Usage: $program <subcommand> [options]\n"
+    printf "\n"
+    printf "\tupdate\tUpdate server list from Mullvad.\n"
+    printf "\tserver\tList and show servers.\n"
+    printf "\n"
+}
+
+update_cmd() {
+    curl -s https://api-www.mullvad.net/www/relays/all/ -o ./servers.json
+    echo "Server list updated."
+}
+
+server_cmd() {
+    subcommand=$1
+    case $subcommand in
+        *)
+            shift
+            server_${subcommand}_cmd $@
+            ;;
+    esac
+}
+
+server_show_cmd() {
+    # Check whether dependency jq is installed
+    if ! [ -x "$(command -v jq)" ]; then
+        echo "Error: jq is not installed."
+        exit 1
+    fi
+
+    name=$1
+    server=$(cat servers.json | jq "map(select(.hostname == \"$name\")) | .[]")
+
+    printf "Hostname:\t%s\n" $(json "$server" hostname)
+    printf "Protocol:\t%s\n" $(json "$server" type)
+    printf "Provider:\t%s\n" $(json "$server" provider)
+    printf "Bandwidth:\t%sG\n" $(json "$server" network_port_speed)
+    printf "Location:\t%s(%s), %s(%s)\n" \
+        "$(json "$server" city_name)" \
+        "$(json "$server" city_code)" \
+        "$(json "$server" country_name)" \
+        "$(json "$server" country_code)"
+    printf "Active:\t\t%s\n" $(json "$server" active)
+    printf "IPv4:\t\t%s\n" $(json "$server" ipv4_addr_in)
+    printf "IPv6:\t\t%s\n" $(json "$server" ipv6_addr_in)
+
+    pubkey=$(json "$server" pubkey)
+    if [[ $pubkey != "null" ]]; then
+        printf "Pubkey:\t\t%s\n" $pubkey
+    fi
+}
+
+subcommand=$1
+case $subcommand in
+    "" | "-h" | "--help")
+        help_cmd
+        ;;
+    *)
+        shift
+        ${subcommand}_cmd $@
+        ;;
+esac
